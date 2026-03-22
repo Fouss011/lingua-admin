@@ -120,7 +120,7 @@ function DatasetForm() {
 
       if (finalAudioFile) {
         const ext = getExtensionFromFile(finalAudioFile)
-        const path = `ui_prompts/${lang}/${audioKey}/${Date.now()}.${ext}`
+        const path = `${sourceLanguage}/admin/${entry.id}-${Date.now()}.${ext}`
 
         const { error: uploadError } = await supabase
           .storage
@@ -365,7 +365,9 @@ function UiAudioForm() {
 
     try {
       const ext = getExtensionFromFile(finalAudioFile)
-      const path = `ui_prompts/${lang}/${audioKey}.${ext}`
+      const path = `ui_prompts/${lang}/${audioKey}/${Date.now()}.${ext}`
+
+      console.log('UI AUDIO PATH =', path)
 
       const { error: uploadError } = await supabase
         .storage
@@ -374,20 +376,39 @@ function UiAudioForm() {
 
       if (uploadError) throw uploadError
 
-      const { error: upsertError } = await supabase
-        .from('ui_audio_prompts')
-        .upsert([{
-          key: audioKey.trim(),
-          lang,
-          title: title.trim(),
-          storage_bucket: 'lingua-audio',
-          storage_path: path,
-          is_active: true,
-        }], {
-          onConflict: 'key,lang',
-        })
+      const payload = {
+        key: audioKey.trim(),
+        lang,
+        title: title.trim(),
+        storage_bucket: 'lingua-audio',
+        storage_path: path,
+        is_active: true,
+      }
 
-      if (upsertError) throw upsertError
+      const { data: existingRows, error: findError } = await supabase
+        .from('ui_audio_prompts')
+        .select('id')
+        .eq('key', audioKey.trim())
+        .eq('lang', lang)
+
+      if (findError) throw findError
+
+      if (existingRows && existingRows.length > 0) {
+        const existingId = existingRows[0].id
+
+        const { error: updateError } = await supabase
+          .from('ui_audio_prompts')
+          .update(payload)
+          .eq('id', existingId)
+
+        if (updateError) throw updateError
+      } else {
+        const { error: insertError } = await supabase
+          .from('ui_audio_prompts')
+          .insert([payload])
+
+        if (insertError) throw insertError
+      }
 
       setMessage('Audio UI Moulédi enregistré avec succès.')
       setAudioKey('home_intro')
