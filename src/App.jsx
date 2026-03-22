@@ -120,7 +120,7 @@ function DatasetForm() {
 
       if (finalAudioFile) {
         const ext = getExtensionFromFile(finalAudioFile)
-        const path = `${sourceLanguage}/admin/${entry.id}.${ext}`
+        const path = `ui_prompts/${lang}/${audioKey}/${Date.now()}.${ext}`
 
         const { error: uploadError } = await supabase
           .storage
