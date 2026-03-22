@@ -67,7 +67,7 @@ function DatasetForm() {
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const recorder = useAudioRecorder('dataset')
+  const recorder = useAudioRecorder('dataset', { mode: 'dataset' })
 
   const finalAudioFile = useMemo(() => {
     return recorder.recordedFile || uploadedFile || null
@@ -120,12 +120,16 @@ function DatasetForm() {
 
       if (finalAudioFile) {
         const ext = getExtensionFromFile(finalAudioFile)
+        const contentType = finalAudioFile.type || guessContentTypeFromExt(ext)
         const path = `${sourceLanguage}/admin/${entry.id}-${Date.now()}.${ext}`
 
         const { error: uploadError } = await supabase
           .storage
           .from('lingua-audio')
-          .upload(path, finalAudioFile, { upsert: true })
+          .upload(path, finalAudioFile, {
+            upsert: true,
+            contentType,
+          })
 
         if (uploadError) throw uploadError
 
@@ -310,6 +314,7 @@ function DatasetForm() {
         recorder={recorder}
         uploadedFile={uploadedFile}
         setUploadedFile={setUploadedFile}
+        fileAccept="audio/*"
       />
 
       <button type="submit" disabled={loading} style={styles.button}>
@@ -329,7 +334,7 @@ function UiAudioForm() {
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const recorder = useAudioRecorder('ui')
+  const recorder = useAudioRecorder('ui', { mode: 'ui' })
 
   const finalAudioFile = useMemo(() => {
     return recorder.recordedFile || uploadedFile || null
@@ -365,6 +370,11 @@ function UiAudioForm() {
 
     try {
       const ext = getExtensionFromFile(finalAudioFile)
+
+      if (!['m4a', 'mp4'].includes(ext)) {
+        throw new Error("Format non supporté pour l'audio UI. Utilise un fichier .m4a ou .mp4.")
+      }
+
       const path = `ui_prompts/${lang}/${audioKey}-${Date.now()}.${ext}`
 
       console.log('UI AUDIO PATH =', path)
@@ -372,7 +382,10 @@ function UiAudioForm() {
       const { error: uploadError } = await supabase
         .storage
         .from('lingua-audio')
-        .upload(path, finalAudioFile, { upsert: true })
+        .upload(path, finalAudioFile, {
+          upsert: true,
+          contentType: 'audio/mp4',
+        })
 
       if (uploadError) throw uploadError
 
@@ -483,6 +496,7 @@ function UiAudioForm() {
         recorder={recorder}
         uploadedFile={uploadedFile}
         setUploadedFile={setUploadedFile}
+        fileAccept=".m4a,.mp4,audio/mp4"
       />
 
       <button type="submit" disabled={loading} style={styles.button}>
@@ -494,7 +508,13 @@ function UiAudioForm() {
   )
 }
 
-function RecorderSection({ title, recorder, uploadedFile, setUploadedFile }) {
+function RecorderSection({
+  title,
+  recorder,
+  uploadedFile,
+  setUploadedFile,
+  fileAccept = 'audio/*',
+}) {
   const previewUrl = useMemo(() => {
     if (recorder.audioUrl) return recorder.audioUrl
     if (!uploadedFile) return ''
@@ -570,7 +590,7 @@ function RecorderSection({ title, recorder, uploadedFile, setUploadedFile }) {
         Ou charger un fichier existant
         <input
           type="file"
-          accept="audio/*"
+          accept={fileAccept}
           onChange={(e) => {
             const file = e.target.files?.[0] || null
             setUploadedFile(file)
@@ -583,7 +603,9 @@ function RecorderSection({ title, recorder, uploadedFile, setUploadedFile }) {
   )
 }
 
-function useAudioRecorder(prefix = 'audio') {
+function useAudioRecorder(prefix = 'audio', options = {}) {
+  const { mode = 'dataset' } = options
+
   const mediaRecorderRef = useRef(null)
   const mediaStreamRef = useRef(null)
   const audioContextRef = useRef(null)
@@ -691,7 +713,7 @@ function useAudioRecorder(prefix = 'audio') {
         analyserRef.current = analyser
       }
 
-      const mimeType = getSupportedMimeType()
+      const mimeType = getSupportedMimeType(mode)
       const recorder = mimeType
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream)
@@ -705,12 +727,17 @@ function useAudioRecorder(prefix = 'audio') {
       }
 
       recorder.onstop = () => {
-        const blobType = recorder.mimeType || 'audio/webm'
+        const blobType =
+          recorder.mimeType ||
+          (mode === 'ui' ? 'audio/mp4' : 'audio/webm')
+
         const blob = new Blob(chunksRef.current, { type: blobType })
         const url = URL.createObjectURL(blob)
-        const ext = mimeToExtension(blobType)
+        const ext = mimeToExtension(blobType, mode)
+        const fileType = blobType || guessContentTypeFromExt(ext)
+
         const file = new File([blob], `${prefix}-${Date.now()}.${ext}`, {
-          type: blobType,
+          type: fileType,
         })
 
         setRecordedBlob(blob)
@@ -811,15 +838,22 @@ function Meter({ level = 0, active = false }) {
   return <div style={styles.meter}>{bars}</div>
 }
 
-function getSupportedMimeType() {
-  const candidates = [
+function getSupportedMimeType(mode = 'dataset') {
+  if (typeof MediaRecorder === 'undefined') return ''
+
+  const uiCandidates = [
+    'audio/mp4',
+    'audio/aac',
+  ]
+
+  const datasetCandidates = [
     'audio/webm;codecs=opus',
     'audio/webm',
     'audio/mp4',
     'audio/ogg;codecs=opus',
   ]
 
-  if (typeof MediaRecorder === 'undefined') return ''
+  const candidates = mode === 'ui' ? uiCandidates : datasetCandidates
 
   for (const type of candidates) {
     if (MediaRecorder.isTypeSupported(type)) {
@@ -830,16 +864,35 @@ function getSupportedMimeType() {
   return ''
 }
 
-function mimeToExtension(mimeType = '') {
-  if (mimeType.includes('mp4')) return 'mp4'
+function mimeToExtension(mimeType = '', mode = 'dataset') {
+  if (mimeType.includes('mp4')) return 'm4a'
+  if (mimeType.includes('aac')) return 'm4a'
   if (mimeType.includes('ogg')) return 'ogg'
+  if (mode === 'ui') return 'm4a'
   return 'webm'
 }
 
 function getExtensionFromFile(file) {
   const byName = file.name?.split('.').pop()?.toLowerCase()
   if (byName && byName !== file.name) return byName
-  return mimeToExtension(file.type || '')
+
+  const type = file.type || ''
+  if (type.includes('mp4')) return 'm4a'
+  if (type.includes('aac')) return 'm4a'
+  if (type.includes('ogg')) return 'ogg'
+  if (type.includes('webm')) return 'webm'
+
+  return 'm4a'
+}
+
+function guessContentTypeFromExt(ext = '') {
+  const cleanExt = ext.toLowerCase()
+
+  if (cleanExt === 'm4a' || cleanExt === 'mp4') return 'audio/mp4'
+  if (cleanExt === 'ogg') return 'audio/ogg'
+  if (cleanExt === 'webm') return 'audio/webm'
+
+  return 'application/octet-stream'
 }
 
 const styles = {
