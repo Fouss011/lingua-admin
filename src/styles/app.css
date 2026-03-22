@@ -1,0 +1,99 @@
+:root {
+  font-family: Arial, sans-serif;
+  color: #f5f5f5;
+  background: #07111f;
+}
+
+body {
+  margin: 0;
+  background: #07111f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.app-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.topbar h1 {
+  margin: 0 0 8px;
+}
+
+.topbar p {
+  margin: 0 0 20px;
+  color: #b8c4d6;
+}
+
+.tabs {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.tab {
+  border: 1px solid #385075;
+  background: transparent;
+  color: white;
+  padding: 10px 16px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.tab.active {
+  background: #123159;
+}
+
+.card {
+  border: 1px solid #223754;
+  border-radius: 16px;
+  padding: 20px;
+  background: #0b1728;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.full {
+  grid-column: 1 / -1;
+}
+
+input,
+select,
+textarea,
+button {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #314764;
+  background: #091321;
+  color: white;
+}
+
+button {
+  cursor: pointer;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.message {
+  margin: 0;
+  padding: 12px;
+  background: #13263d;
+  border-radius: 10px;
+  color: #ffd27a;
+}
