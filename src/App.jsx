@@ -684,81 +684,100 @@ function useAudioRecorder(prefix = 'audio', options = {}) {
   }
 
   async function startRecording() {
-    try {
-      setError('')
+  try {
+    setError('')
 
-      if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error("L'enregistrement micro n'est pas supporté sur ce navigateur.")
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("L'enregistrement micro n'est pas supporté sur ce navigateur.")
+    }
+
+    if (audioUrl) URL.revokeObjectURL(audioUrl)
+    setAudioUrl('')
+    setRecordedBlob(null)
+    setRecordedFile(null)
+    setElapsedMs(0)
+    setLevel(0)
+    chunksRef.current = []
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    mediaStreamRef.current = stream
+
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext
+    if (AudioContextCtor) {
+      const audioContext = new AudioContextCtor()
+      audioContextRef.current = audioContext
+      const source = audioContext.createMediaStreamSource(stream)
+      const analyser = audioContext.createAnalyser()
+      analyser.fftSize = 1024
+      source.connect(analyser)
+      analyserRef.current = analyser
+    }
+
+    const mimeType = getSupportedMimeType(mode)
+
+    if (mode === 'ui' && !mimeType) {
+      cleanupAll()
+      throw new Error(
+        "Ce navigateur n'enregistre pas l'audio UI en format compatible (.m4a/.mp4). Charge directement un fichier .m4a."
+      )
+    }
+
+    const recorder = new MediaRecorder(
+      stream,
+      mimeType ? { mimeType } : undefined
+    )
+
+    mediaRecorderRef.current = recorder
+
+    recorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) {
+        chunksRef.current.push(event.data)
       }
+    }
 
-      if (audioUrl) URL.revokeObjectURL(audioUrl)
-      setAudioUrl('')
-      setRecordedBlob(null)
-      setRecordedFile(null)
-      setElapsedMs(0)
-      setLevel(0)
-      chunksRef.current = []
+    recorder.onstop = () => {
+      const actualMimeType = recorder.mimeType || ''
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      mediaStreamRef.current = stream
-
-      const AudioContextCtor = window.AudioContext || window.webkitAudioContext
-      if (AudioContextCtor) {
-        const audioContext = new AudioContextCtor()
-        audioContextRef.current = audioContext
-        const source = audioContext.createMediaStreamSource(stream)
-        const analyser = audioContext.createAnalyser()
-        analyser.fftSize = 1024
-        source.connect(analyser)
-        analyserRef.current = analyser
-      }
-
-      const mimeType = getSupportedMimeType(mode)
-      const recorder = mimeType
-        ? new MediaRecorder(stream, { mimeType })
-        : new MediaRecorder(stream)
-
-      mediaRecorderRef.current = recorder
-
-      recorder.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) {
-          chunksRef.current.push(event.data)
-        }
-      }
-
-      recorder.onstop = () => {
-        const blobType =
-          recorder.mimeType ||
-          (mode === 'ui' ? 'audio/mp4' : 'audio/webm')
-
-        const blob = new Blob(chunksRef.current, { type: blobType })
-        const url = URL.createObjectURL(blob)
-        const ext = mimeToExtension(blobType, mode)
-        const fileType = blobType || guessContentTypeFromExt(ext)
-
-        const file = new File([blob], `${prefix}-${Date.now()}.${ext}`, {
-          type: fileType,
-        })
-
-        setRecordedBlob(blob)
-        setRecordedFile(file)
-        setAudioUrl(url)
+      if (mode === 'ui' && !actualMimeType.includes('mp4') && !actualMimeType.includes('aac')) {
+        setError("Le micro a produit un format non compatible pour l'audio UI. Utilise un fichier .m4a.")
         setIsRecording(false)
         cleanupMetering()
         cleanupStream()
+        chunksRef.current = []
+        return
       }
 
-      startedAtRef.current = Date.now()
-      recorder.start()
-      setIsRecording(true)
-      startMetering()
-    } catch (err) {
-      console.error(err)
-      setError(err.message || 'Impossible de démarrer le micro.')
+      const blobType =
+        actualMimeType || (mode === 'ui' ? 'audio/mp4' : 'audio/webm')
+
+      const blob = new Blob(chunksRef.current, { type: blobType })
+      const url = URL.createObjectURL(blob)
+      const ext = mimeToExtension(blobType, mode)
+      const fileType = blobType || guessContentTypeFromExt(ext)
+
+      const file = new File([blob], `${prefix}-${Date.now()}.${ext}`, {
+        type: fileType,
+      })
+
+      setRecordedBlob(blob)
+      setRecordedFile(file)
+      setAudioUrl(url)
       setIsRecording(false)
-      cleanupAll()
+      cleanupMetering()
+      cleanupStream()
     }
+
+    startedAtRef.current = Date.now()
+    recorder.start()
+    setIsRecording(true)
+    startMetering()
+  } catch (err) {
+    console.error(err)
+    setError(err.message || 'Impossible de démarrer le micro.')
+    setIsRecording(false)
+    cleanupAll()
   }
+}
 
   function stopRecording() {
     try {
@@ -842,6 +861,7 @@ function getSupportedMimeType(mode = 'dataset') {
   if (typeof MediaRecorder === 'undefined') return ''
 
   const uiCandidates = [
+    'audio/mp4;codecs=mp4a.40.2',
     'audio/mp4',
     'audio/aac',
   ]
