@@ -365,7 +365,7 @@ function UiAudioForm() {
 
     try {
       const ext = getExtensionFromFile(finalAudioFile)
-      const path = `ui_prompts/${lang}/${audioKey}/${Date.now()}.${ext}`
+      const path = `ui_prompts/${lang}/${audioKey}-${Date.now()}.${ext}`
 
       console.log('UI AUDIO PATH =', path)
 
